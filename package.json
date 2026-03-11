@@ -49,5 +49,18 @@
     "tailwindcss": "^3.4.18",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
-  }
+  },
+  "description": "<!-- Don't delete it --> <div name=\"readme-top\"></div>",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Madhu18S/karma.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Madhu18S/karma/issues"
+  },
+  "homepage": "https://github.com/Madhu18S/karma#readme"
 }
