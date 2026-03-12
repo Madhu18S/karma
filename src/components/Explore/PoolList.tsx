@@ -5,6 +5,8 @@ import type { Pool } from "@/lib/types";
 import { getPriceFeedName as getPriceFeedNameUtil } from "@/utils/supportedChainFeed";
 import { getChainConfig } from "@/utils/chainConfig";
 import { getHebeswapPairByAddress } from "@/utils/hebeswapConfig";
+import { useRenderCount } from '@/debug/useRenderCount';
+import { useWhyDidYouRender } from '@/debug/useWhyDidYouRender';
 // Helper function to get oracle name/description
 const getOracleName = (oracleAddress: string, chainId: number): string => {
   if (chainId === 61) {

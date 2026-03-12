@@ -173,102 +173,6 @@ function Hero({ router }: { router: ReturnType<typeof useRouter> }) {
     </section>
   );
 }
-
-// ── How it works ──────────────────────────────────────────────
-function HowItWorks({ router }: { router: ReturnType<typeof useRouter> }) {
-  const [ref, inView] = useInView();
-
-  const steps = [
-    {
-      num: "01", color: "indigo",
-      icon: "🔍",
-      title: "Explore Prediction Markets",
-      desc: "Browse all active Bull/Bear pools across any supported asset. See live prices, sentiment percentages, and pool sizes. Pick a market and take a position.",
-      cta: "Browse Markets", href: "/explorePools",
-    },
-    {
-      num: "02", color: "emerald",
-      icon: "⚙️",
-      title: "Create Your Own Pool",
-      desc: "Deploy a new prediction market in minutes. Connect to Chainlink price feeds, name your Bull/Bear tokens, set fees, and go live — no backend needed.",
-      cta: "Create a Pool", href: "/createPool",
-    },
-    {
-      num: "03", color: "amber",
-      icon: "⚖️",
-      title: "Submit Prices via Karma",
-      desc: "Act as an oracle reporter. Your influence is determined by how balanced your Bull/Bear position is — not how wealthy you are. Honest reporters earn more over time.",
-      cta: "Open Oracle", href: "/karma",
-    },
-    {
-      num: "04", color: "purple",
-      icon: "📊",
-      title: "Track Your Portfolio",
-      desc: "Monitor all positions across every pool and chain. See your Bull/Bear balances, open positions, earnings, and full transaction history in one dashboard.",
-      cta: "View Portfolio", href: "/portfolio",
-    },
-  ];
-
-  const colorMap = {
-    indigo:  { num: "text-indigo-100 dark:text-indigo-950",  tag: "text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 border-indigo-100 dark:border-indigo-500/20" },
-    emerald: { num: "text-emerald-100 dark:text-emerald-950", tag: "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 border-emerald-100 dark:border-emerald-500/20" },
-    amber:   { num: "text-amber-100 dark:text-amber-950",    tag: "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border-amber-100 dark:border-amber-500/20" },
-    purple:  { num: "text-purple-100 dark:text-purple-950",  tag: "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/30 border-purple-100 dark:border-purple-500/20" },
-  };
-
-  return (
-    <section ref={ref} className="py-24 bg-gray-50 dark:bg-zinc-900">
-      <div className="max-w-6xl mx-auto px-6">
-        <div className={`text-center mb-14 transition-all duration-700 ${inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
-          <p className="text-xs font-bold uppercase tracking-widest text-gray-400 dark:text-zinc-500 mb-3">How it works</p>
-          <h2 className="text-4xl md:text-5xl font-black text-gray-900 dark:text-white tracking-tight">
-            Four steps to get started
-          </h2>
-          <p className="text-gray-500 dark:text-zinc-400 mt-3 max-w-lg mx-auto text-sm leading-relaxed">
-            Everything you need — from exploring markets to submitting oracle prices — in one lean, backend-free frontend.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {steps.map((s, i) => {
-            const c = colorMap[s.color as keyof typeof colorMap];
-            return (
-              <button
-                key={s.num}
-                onClick={() => router.push(s.href)}
-                className={`group relative text-left bg-white dark:bg-zinc-950 rounded-3xl border border-gray-100 dark:border-zinc-800 shadow-lg p-6 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 ${inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}
-                style={{ transitionDelay: `${i * 100}ms` }}
-              >
-                {/* Big bg number */}
-                <div className={`absolute top-4 right-5 text-7xl font-black select-none pointer-events-none ${c.num}`}>
-                  {s.num}
-                </div>
-
-                <div className="text-3xl mb-3">{s.icon}</div>
-
-                <h3 className="text-lg font-black text-gray-900 dark:text-white mb-2 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                  {s.title}
-                </h3>
-                <p className="text-sm text-gray-500 dark:text-zinc-400 leading-relaxed mb-4">
-                  {s.desc}
-                </p>
-
-                <span className={`inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide border px-2.5 py-1 rounded-lg ${c.tag}`}>
-                  {s.cta}
-                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2"
-                    className="group-hover:translate-x-0.5 transition-transform">
-                    <path d="M2 5h6M5 2l3 3-3 3" />
-                  </svg>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </section>
-  );
-}
-
 // ── Karma explainer ───────────────────────────────────────────
 function KarmaExplainer({ router }: { router: ReturnType<typeof useRouter> }) {
   const [ref, inView] = useInView();
@@ -293,13 +197,13 @@ function KarmaExplainer({ router }: { router: ReturnType<typeof useRouter> }) {
 
             <div className="space-y-2.5 mb-8">
               {[
-                { emoji: "⚖️", title: "Balance = Power",         desc: "ω = √(B·b) — hold equal Bull and Bear to maximise influence" },
-                { emoji: "⏱️", title: "Flash Loans = Zero Weight", desc: "e^(−λΔt) → 0 as Δt → 0 — borrowed capital is ignored" },
-                { emoji: "🎯", title: "Truth-Telling Pays",       desc: "Nash equilibrium: honest reporters maximise long-run utility" },
-                { emoji: "🔒", title: "Sybil-Proof",              desc: "Cauchy-Schwarz: splitting wallets never increases total weight" },
+                { title: "Balance = Power",         desc: "ω = √(B·b) — hold equal Bull and Bear to maximise influence" },
+                { title: "Flash Loans = Zero Weight", desc: "e^(−λΔt) → 0 as Δt → 0 — borrowed capital is ignored" },
+                { title: "Truth-Telling Pays",       desc: "Nash equilibrium: honest reporters maximise long-run utility" },
+                { title: "Sybil-Proof",              desc: "Cauchy-Schwarz: splitting wallets never increases total weight" },
               ].map(item => (
                 <div key={item.title} className="flex items-start gap-3 p-3.5 rounded-2xl bg-gray-50 dark:bg-zinc-900 border border-gray-100 dark:border-zinc-800">
-                  <span className="text-lg shrink-0">{item.emoji}</span>
+
                   <div>
                     <div className="text-sm font-bold text-gray-900 dark:text-white">{item.title}</div>
                     <div className="text-xs text-gray-500 dark:text-zinc-400">{item.desc}</div>
@@ -312,7 +216,7 @@ function KarmaExplainer({ router }: { router: ReturnType<typeof useRouter> }) {
               onClick={() => router.push("/karma")}
               className="px-6 py-3 rounded-2xl bg-gray-900 dark:bg-white text-white dark:text-black font-bold text-sm hover:opacity-80 hover:-translate-y-0.5 transition-all shadow-lg"
             >
-              Open Karma Oracle →
+              Open Karma Oracle → (scroll down post the loading bar)
             </button>
           </div>
 
@@ -394,25 +298,25 @@ function FeatureGrid({ router }: { router: ReturnType<typeof useRouter> }) {
 
   const cards = [
     {
-      emoji: "🔍", title: "Explore Pools",
-      desc: "Browse all active Bull/Bear prediction markets. Filter by chain, asset, or TVL. See live sentiment and pool health at a glance.",
+      title: "Explore Pools",
+      desc: "Browse all active Bull/Bear pools across any supported asset. Filter by chain, asset, or TVL. See live sentiment and pool health at a glance. See live prices, sentiment percentages, and pool sizes. Pick a market and take a position.",
       href: "/explorePools", cta: "Browse Markets",
       gradient: "from-indigo-50 dark:from-indigo-950/20",
     },
     {
-      emoji: "⚙️", title: "Create a Pool",
-      desc: "Deploy your own prediction market on any supported EVM chain. Connect Chainlink price feeds, set fees, and go live in minutes.",
+      title: "Create a Pool",
+      desc: "Deploy your own prediction market on any supported EVM chain. Connect to Chainlink price feeds, name your Bull/Bear tokens, set fees, and go live — no backend needed.",
       href: "/createPool", cta: "Create Market",
       gradient: "from-emerald-50 dark:from-emerald-950/20",
     },
     {
-      emoji: "⚖️", title: "Karma Oracle",
-      desc: "Submit prices as a reporter. Your weight ω=√(B·b) means balanced positions dominate. Flash loans, Sybil attacks, and collusion are mathematically blocked.",
+      title: "Karma Oracle",
+      desc: "Submit prices as a reporter.Your influence is determined by how balanced your Bull/Bear position is — not how wealthy you are. Honest reporters earn more over time. Your weight ω=√(B·b) means balanced positions dominate. Flash loans, Sybil attacks, and collusion are mathematically blocked.",
       href: "/karma", cta: "Open Oracle",
       gradient: "from-amber-50 dark:from-amber-950/20",
     },
     {
-      emoji: "📊", title: "Your Portfolio",
+      title: "Your Portfolio",
       desc: "Track every open position, Bull/Bear balance, and transaction across Ethereum, Sepolia, ETC, Polygon, Base, and BSC in one place.",
       href: "/portfolio", cta: "View Portfolio",
       gradient: "from-purple-50 dark:from-purple-950/20",
@@ -438,7 +342,6 @@ function FeatureGrid({ router }: { router: ReturnType<typeof useRouter> }) {
               className={`group text-left bg-gradient-to-br ${c.gradient} to-white dark:to-zinc-950 rounded-3xl border border-gray-100 dark:border-zinc-800 shadow-lg p-6 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 ${inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}
               style={{ transitionDelay: `${i * 80}ms` }}
             >
-              <div className="text-3xl mb-3">{c.emoji}</div>
               <h3 className="text-xl font-black text-gray-900 dark:text-white mb-2 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
                 {c.title}
               </h3>
@@ -505,11 +408,11 @@ export default function HomePage() {
   return (
     <div className="bg-white dark:bg-zinc-950 text-gray-900 dark:text-white">
       <Hero router={router} />
-      <HowItWorks router={router} />
+      {/* <HowItWorks router={router} /> */}
       <KarmaExplainer router={router} />
       <StatsBar />
       <FeatureGrid router={router} />
       <FinalCTA router={router} />
     </div>
   );
-}
+};

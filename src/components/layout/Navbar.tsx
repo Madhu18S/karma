@@ -27,7 +27,7 @@ const Navbar: React.FC<NavbarProps> = ({ className = "" }) => {
     }
   }, [resolvedTheme]);
 
-  if (!isThemeReady) return null;
+  if (!isThemeReady) return <header className={cn("justify-between z-50", className)} style={{ height: "64px" }} />;
 
   return (
     <>
