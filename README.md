@@ -42,11 +42,11 @@ Biased reporters contribute near-zero weight → their prices are ignored.
 ### Utility Function
 
 ```
-Uᵢ = E[ Σ δᵗ · ( (pᵢ − p_true)·(Bᵢ − bᵢ) + Wᵢ/ΣWⱼ · R(t) ) ]
+Uᵢ = E[ Σ δᵗ · ( (pᵢ − p_prev)·(Bᵢ − bᵢ) + Wᵢ/ΣWⱼ · R(t) ) ]
 ```
 
 Where:
-- `(pᵢ − p_true)·(Bᵢ − bᵢ)` = trading profit (zero when balanced)
+- `(pᵢ − p_prev)·(Bᵢ − bᵢ)` = trading profit (zero when balanced)
 - `Wᵢ/ΣWⱼ · R(t)` = reward share (maximised at honest reporting)
 - `δ = 0.95` = discount factor
 
@@ -55,17 +55,17 @@ Where:
 After each epoch, balances update based on accuracy:
 
 ```
-Bᵢ(t+1) = Bᵢ(t) · P_agg / P_true
-bᵢ(t+1) = bᵢ(t) · (2·P_true − P_agg) / P_true
+Bᵢ(t+1) = Bᵢ(t) · P_i/ P_prev
+bᵢ(t+1) = bᵢ(t) · (2·P_prev − P_i) / P_prev
 ```
 
-Reporters who submitted prices close to `P_true` see their balances (and future weight) grow.
+Reporters who submitted prices close to `P_prev` see their balances (and future weight) grow.
 
 ### Nash Equilibrium
 
 The unique Nash equilibrium is:
 1. `Bᵢ ≈ bᵢ` — balanced position
-2. `pᵢ = p_true` — truthful price reporting
+2. `$p_i = P_prev + \epsilon_i ` — truthful price reporting
 
 At this equilibrium, trading profit `(B−b) = 0` and reward share is maximised by honest reporting. Any deviation reduces long-run utility.
 
@@ -86,7 +86,7 @@ The sum of geometric means is always ≤ the geometric mean of sums. Splitting n
 ### 2. Manipulation Resistance — Concavity
 
 ```
-∂W_future/∂P_agg = 0  at P_agg = P_true
+∂W_future/∂P_agg = 0  at P_agg = P_prev
 ∂²W/∂P²_agg < 0
 ```
 
@@ -200,7 +200,7 @@ The UI runs a live engine test on every render:
 ✓ Neutral (500/500) → ω≈488.6
 ✓ Biased (10k/1) → ω≈98.5 ≪ neutral → pump ignored
 ✓ Flash loan (Δt=0.001s) → ω=0.00000017 ≈ 0
-✓ Nash eq: P_agg=$100.21 ≈ P_true=$100
+✓ Nash eq: P_agg=$100.21 ≈ P_prev=$100
 ```
 
 Seed data hardcoded to demonstrate Nash equilibrium:
