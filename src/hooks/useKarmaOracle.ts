@@ -10,6 +10,8 @@ import {
   calcWeightedAveragePrice,
   calcUtility,
   withWeights,
+  resolvePPrev,
+  KARMA_CONSTANTS,
   type KarmaSubmission,
   type KarmaSubmissionWithWeight,
 } from "@/utils/karmaEngine";
@@ -46,9 +48,9 @@ export interface UseKarmaOracleReturn {
   submissions: KarmaSubmission[];
   submissionsWithWeights: KarmaSubmissionWithWeight[];
   totalWeight: number;
-  pAgg: number;
-  pTrue: number;
-  setPTrue: (p: number) => void;
+  pCurr: number;           // was: pAgg — current epoch aggregated price
+  pPrev: number;           // was: pTrue — previous epoch consensus price (no external oracle)
+  setPPrev: (p: number) => void;  // was: setPTrue
   submitPrice: (price: number) => void;
   isSubmitting: boolean;
   botActive: boolean;
@@ -58,21 +60,31 @@ export interface UseKarmaOracleReturn {
 interface UseKarmaOracleOptions {
   bullTokenAddress?: `0x${string}`;
   bearTokenAddress?: `0x${string}`;
-  initialPTrue?: number;
+  // was: initialPTrue
+  // P_prev = previous epoch consensus price from KarmaOracle.getPreviousEpochPrice()
+  // For epoch 0, falls back to KARMA_CONSTANTS.BOOTSTRAP_PRICE (100)
+  initialPPrev?: number;
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 export function useKarmaOracle({
   bullTokenAddress,
   bearTokenAddress,
-  initialPTrue = 100,
+  initialPPrev,                                        // was: initialPTrue
 }: UseKarmaOracleOptions = {}): UseKarmaOracleReturn {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
 
   // Seed submissions initialised client-side only to avoid SSR/hydration mismatch
   const [submissions, setSubmissions] = useState<KarmaSubmission[]>([]);
-  const [pTrue, setPTrue] = useState(initialPTrue);
+
+  // P_prev = previous epoch consensus price stored on-chain.
+  // Post-deploy: read via useReadContract({ functionName: 'getPreviousEpochPrice' })
+  // Pre-deploy:  falls back to resolvePPrev() → BOOTSTRAP_PRICE (100)
+  const [pPrev, setPPrev] = useState<number>(            // was: pTrue / setPTrue
+    resolvePPrev(initialPPrev)
+  );
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [botActive, setBotActive] = useState(false);
 
@@ -135,60 +147,73 @@ export function useKarmaOracle({
 
   // ── Derived state ─────────────────────────────────────────────────────────
   const submissionsWithWeights = useMemo(() => withWeights(submissions), [submissions]);
-  const totalWeight = useMemo(() => submissionsWithWeights.reduce((s, x) => s + x.weight, 0), [submissionsWithWeights]);
-  const pAgg = useMemo(() => calcWeightedAveragePrice(submissionsWithWeights), [submissionsWithWeights]);
 
-  const myWeight = useMemo(() =>
-    calcKarmaWeight({ bullBalance, bearBalance, lastSubmissionTime: Date.now() / 1000 }),
+  const totalWeight = useMemo(
+    () => submissionsWithWeights.reduce((s, x) => s + x.weight, 0),
+    [submissionsWithWeights]
+  );
+
+  // pCurr = current epoch aggregated price (was: pAgg)
+  const pCurr = useMemo(
+    () => calcWeightedAveragePrice(submissionsWithWeights),
+    [submissionsWithWeights]
+  );
+
+  const myWeight = useMemo(
+    () => calcKarmaWeight({ bullBalance, bearBalance, lastSubmissionTime: Date.now() / 1000 }),
     [bullBalance, bearBalance]
   );
 
-  const myUtility = useMemo(() =>
-    calcUtility({
-      price: pAgg,
-      pTrue,
-      bullBalance,
-      bearBalance,
-      weight: myWeight,
-      totalWeight: totalWeight + myWeight,
-    }),
-    [pAgg, pTrue, bullBalance, bearBalance, myWeight, totalWeight]
+  const myUtility = useMemo(
+    () =>
+      calcUtility({
+        price: pCurr,
+        pPrev,                   // was: pTrue
+        bullBalance,
+        bearBalance,
+        weight: myWeight,
+        totalWeight: totalWeight + myWeight,
+      }),
+    [pCurr, pPrev, bullBalance, bearBalance, myWeight, totalWeight]
   );
 
   // ── Submit price ──────────────────────────────────────────────────────────
   // Mock mode: saves to local state.
   // Post-deploy: replace setSubmissions block with writeContractAsync call
   // using KarmaOracleABI — same pattern as deployPool in CreateFatePool.tsx
-  const submitPrice = useCallback((price: number) => {
-    if (!price || price <= 0) {
-      toast.error("Enter a valid price");
-      return;
-    }
-    if (!isConnected) {
-      toast.error("Connect your wallet first");
-      return;
-    }
+  const submitPrice = useCallback(
+    (price: number) => {
+      if (!price || price <= 0) {
+        toast.error("Enter a valid price");
+        return;
+      }
+      if (!isConnected) {
+        toast.error("Connect your wallet first");
+        return;
+      }
 
-    setIsSubmitting(true);
+      setIsSubmitting(true);
 
-    const newSub: KarmaSubmission = {
-      id: `${address?.slice(0, 8) ?? "You"}-${Date.now()}`,
-      label: address ? `${address.slice(0, 6)}…${address.slice(-4)}` : "You",
-      address: address,
-      bullBalance,
-      bearBalance,
-      price,
-      lastSubmissionTime: Date.now() / 1000,
-      source: "user",
-    };
+      const newSub: KarmaSubmission = {
+        id: `${address?.slice(0, 8) ?? "You"}-${Date.now()}`,
+        label: address ? `${address.slice(0, 6)}…${address.slice(-4)}` : "You",
+        address: address,
+        bullBalance,
+        bearBalance,
+        price,
+        lastSubmissionTime: Date.now() / 1000,
+        source: "user",
+      };
 
-    setSubmissions((prev) => [newSub, ...prev]);
-    setIsSubmitting(false);
+      setSubmissions((prev) => [newSub, ...prev]);
+      setIsSubmitting(false);
 
-    toast.success(`Submitted $${price.toFixed(2)} to Karma oracle`, {
-      description: `Your weight: ${myWeight.toFixed(1)} · Karma Price: $${pAgg.toFixed(2)}`,
-    });
-  }, [isConnected, address, bullBalance, bearBalance, myWeight, pAgg]);
+      toast.success(`Submitted $${price.toFixed(2)} to Karma oracle`, {
+        description: `Your weight: ${myWeight.toFixed(1)} · Karma Price: $${pCurr.toFixed(2)}`,
+      });
+    },
+    [isConnected, address, bullBalance, bearBalance, myWeight, pCurr]
+  );
 
   return {
     address,
@@ -202,9 +227,9 @@ export function useKarmaOracle({
     submissions,
     submissionsWithWeights,
     totalWeight,
-    pAgg,
-    pTrue,
-    setPTrue,
+    pCurr,           // was: pAgg
+    pPrev,           // was: pTrue
+    setPPrev,        // was: setPTrue
     submitPrice,
     isSubmitting,
     botActive,
