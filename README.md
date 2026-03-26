@@ -60,6 +60,7 @@ bᵢ(t+1) = bᵢ(t) · (2·P_prev − P_i) / P_prev
 ```
 
 Reporters who submitted prices close to `P_prev` see their balances (and future weight) grow.
+The initial `P_{prev}` is a governance-initialized constant (e.g., $1.00 or the pool's starting parity). After Epoch 0, the protocol becomes entirely endogenous, and the price is discovered solely through user reporting and the Gluon weighting evolution. 
 
 ### Nash Equilibrium
 
@@ -238,21 +239,22 @@ npm run dev
 # Open
 # http://localhost:3000/karma
 ```
-
+## Endogenous Price Discovery
+Karma eliminates the "Oracle Problem" by removing external data dependencies ($P_{true}$). Instead, it utilizes the **Previous Epoch Consensus ($P_{prev}$)** as the reference for balance evolution. This creates a recursive incentive structure where the "Truth" is a moving equilibrium discovered by the community, not a value fetched from a centralized API.
 ---
 
 ## What's Mock vs Production-Ready
 
 | Feature | Status | Notes |
 |---|---|---|
-| Math engine | ✅ Production | Exact proof equations |
-| Weight calculation | ✅ Production | Live on every render |
-| Security proofs | ✅ Production | Live numerical verification |
-| Balance evolution | ✅ Production | Correct epoch equations |
-| On-chain balance reads | ✅ Production | wagmi v2 `useReadContract` |
-| Price submission | 🟡 Mock | `setSubmissions()` → `writeContractAsync()` on deploy |
-| CoinGecko bot | 🟡 Mock | Random ±$60 (CORS prevents client-side fetch; use Next.js API route) |
-| Contract addresses | 🟡 Pending | Karma contract not yet deployed |
+| Math engine | Production | Exact proof equations |
+| Weight calculation | Production | Live on every render |
+| Security proofs | Production | Live numerical verification |
+| Balance evolution | Production | Correct epoch equations |
+| On-chain balance reads | Production | wagmi v2 `useReadContract` |
+| Price submission | Mock | `setSubmissions()` → `writeContractAsync()` on deploy |
+| CoinGecko bot | Mock | Random ±$60 (CORS prevents client-side fetch; use Next.js API route) |
+| Contract addresses | Pending | Karma contract not yet deployed |
 
 ---
 
