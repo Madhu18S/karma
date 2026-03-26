@@ -21,6 +21,8 @@ import {
   nextPeriodWeight,
   checkSybilResistance,
   flashLoanWeight,
+  resolvePPrev,
+  KARMA_CONSTANTS,
   type KarmaSubmission,
 } from "@/utils/karmaEngine";
 import { useKarmaOracle } from "@/hooks/useKarmaOracle";
@@ -34,7 +36,7 @@ interface KarmaPortalProps {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const fmt = (n: number, d = 2) => Number(n).toFixed(d);
+const fmt  = (n: number, d = 2) => Number(n).toFixed(d);
 const fmtK = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(Math.round(n));
 
 function getBiasLabel(B: number, b: number) {
@@ -70,11 +72,14 @@ function SectionBadge({ children, color = "indigo" }: { children: React.ReactNod
 
 // ── Main component ────────────────────────────────────────────────────────────
 export function KarmaPortal({ bullTokenAddress, bearTokenAddress, priceFeedValue, poolName }: KarmaPortalProps) {
-  const [activeTab, setActiveTab]     = useState<"oracle" | "security" | "evolution">("oracle");
-  const [priceInput, setPriceInput]   = useState("");
-  const [pTrueInput, setPTrueInput]   = useState(String(priceFeedValue ?? 100));
+  const [activeTab, setActiveTab]       = useState<"oracle" | "security" | "evolution">("oracle");
+  const [priceInput, setPriceInput]     = useState("");
+  // was: pTrueInput / handlePTrueChange
+  // P_prev = previous epoch consensus price from KarmaOracle.getPreviousEpochPrice()
+  // Pre-deploy: manual input for demo. Post-deploy: read from contract.
+  const [pPrevInput, setPPrevInput]     = useState(String(priceFeedValue ?? KARMA_CONSTANTS.BOOTSTRAP_PRICE));
   const [botCountdown, setBotCountdown] = useState(30);
-  const [localSubs, setLocalSubs]     = useState<KarmaSubmission[]>([]);
+  const [localSubs, setLocalSubs]       = useState<KarmaSubmission[]>([]);
   const botTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const botCdRef    = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -82,25 +87,39 @@ export function KarmaPortal({ bullTokenAddress, bearTokenAddress, priceFeedValue
     address, isConnected,
     bullBalance, bearBalance, myWeight, myUtility, isLoadingBalances,
     submissions, submissionsWithWeights, totalWeight,
-    pAgg, pTrue, setPTrue,
+    pCurr,          // was: pAgg — current epoch aggregated price
+    pPrev,          // was: pTrue — previous epoch consensus price (no external oracle)
+    setPPrev,       // was: setPTrue
     submitPrice, isSubmitting,
     botActive, setBotActive,
-  } = useKarmaOracle({ bullTokenAddress, bearTokenAddress, initialPTrue: priceFeedValue ?? 100 });
+  } = useKarmaOracle({
+    bullTokenAddress,
+    bearTokenAddress,
+    initialPPrev: priceFeedValue ?? KARMA_CONSTANTS.BOOTSTRAP_PRICE,  // was: initialPTrue
+  });
 
   // Merge hook submissions with local bot submissions
   const allSubs = useMemo(() => {
     const merged = [...localSubs, ...submissions];
-    return merged.map(s => ({ ...s, weight: calcKarmaWeight({ bullBalance: s.bullBalance, bearBalance: s.bearBalance, lastSubmissionTime: s.lastSubmissionTime }) }));
+    return merged.map(s => ({
+      ...s,
+      weight: calcKarmaWeight({
+        bullBalance: s.bullBalance,
+        bearBalance: s.bearBalance,
+        lastSubmissionTime: s.lastSubmissionTime,
+      }),
+    }));
   }, [localSubs, submissions]);
 
-  const totalW = useMemo(() => allSubs.reduce((s, x) => s + x.weight, 0), [allSubs]);
-  const pAggAll = useMemo(() => calcWeightedAveragePrice(allSubs), [allSubs]);
-  const maxW = useMemo(() => Math.max(...allSubs.map(s => s.weight), 1), [allSubs]);
+  const totalW   = useMemo(() => allSubs.reduce((s, x) => s + x.weight, 0), [allSubs]);
+  const pCurrAll = useMemo(() => calcWeightedAveragePrice(allSubs), [allSubs]);   // was: pAggAll
+  const maxW     = useMemo(() => Math.max(...allSubs.map(s => s.weight), 1), [allSubs]);
 
-  const handlePTrueChange = (v: string) => {
-    setPTrueInput(v);
+  // was: handlePTrueChange
+  const handlePPrevChange = (v: string) => {
+    setPPrevInput(v);
     const n = parseFloat(v);
-    if (n > 0) setPTrue(n);
+    if (n > 0) setPPrev(n);
   };
 
   // ── Security values ───────────────────────────────────────────────────────
@@ -111,9 +130,9 @@ export function KarmaPortal({ bullTokenAddress, bearTokenAddress, priceFeedValue
   const wFlash   = flashLoanWeight(500, 500, 0.001);
   const sybil    = useMemo(() => checkSybilResistance(submissions), [submissions]);
 
-  // ── Bot — mock price only, no CoinGecko (CORS blocks client-side fetch) ──
-  // To use real prices: create src/app/api/price/route.ts as a Next.js API route
-  // and fetch from there instead (server-side, no CORS issue)
+  // ── Bot — mock price only, no external API (frontend is client-side only) ─
+  // The real poster script (Node.js, off-chain) handles external price sources.
+  // This simulation demonstrates the Orb-style interval posting pattern only.
   const fireBotSubmission = useCallback(() => {
     const mockPrice = 2800 + (Math.random() - 0.5) * 120;
     const botSub: KarmaSubmission = {
@@ -127,7 +146,7 @@ export function KarmaPortal({ bullTokenAddress, bearTokenAddress, priceFeedValue
     };
     setLocalSubs(prev => [botSub, ...prev.slice(0, 24)]);
     toast.success(`🤖 PosterBot: $${fmt(mockPrice)}`, {
-      description: "CoinGecko API (simulated) · auto-submitted",
+      description: "Simulated price · Orb-style interval poster",
     });
   }, []);
 
@@ -149,9 +168,9 @@ export function KarmaPortal({ bullTokenAddress, bearTokenAddress, priceFeedValue
   }, [botActive, fireBotSubmission]);
 
   const tabs = [
-    { id: "oracle",    label: "Oracle Feed",       icon: <Activity size={13} /> },
-    { id: "security",  label: "Security Proofs",   icon: <Shield size={13} /> },
-    { id: "evolution", label: "Balance Evolution",  icon: <RotateCcw size={13} /> },
+    { id: "oracle",    label: "Oracle Feed",      icon: <Activity size={13} /> },
+    { id: "security",  label: "Security Proofs",  icon: <Shield size={13} /> },
+    { id: "evolution", label: "Balance Evolution", icon: <RotateCcw size={13} /> },
   ] as const;
 
   return (
@@ -173,11 +192,12 @@ export function KarmaPortal({ bullTokenAddress, bearTokenAddress, priceFeedValue
                 <span className="text-[10px] font-bold uppercase text-emerald-600 dark:text-emerald-400">Live</span>
               </div>
             </div>
+            {/* was: pAggAll → pCurrAll */}
             <h2 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight leading-none mb-1">
-              {fmt(pAggAll)}<span className="text-lg font-medium text-gray-400 ml-2">USD</span>
+              {fmt(pCurrAll)}<span className="text-lg font-medium text-gray-400 ml-2">USD</span>
             </h2>
             <p className="text-xs text-gray-400 dark:text-zinc-500 font-mono mt-1">
-              P_agg · ωᵢ=√(B·b)·e^(−λΔt) · {allSubs.length} reporters · ΣW={fmt(totalW, 1)}
+              P_curr · ωᵢ=√(B·b)·e^(−λΔt) · {allSubs.length} reporters · ΣW={fmt(totalW, 1)}
             </p>
             <div className="flex gap-2 mt-4 flex-wrap">
               <StatChip label="Bull Bal." value={isLoadingBalances ? "…" : fmtK(bullBalance)} color="text-emerald-600 dark:text-emerald-400" />
@@ -199,8 +219,9 @@ export function KarmaPortal({ bullTokenAddress, bearTokenAddress, priceFeedValue
             <div className="text-emerald-600 dark:text-emerald-400">✓ Neutral (500/500) → ω≈{fmt(wNeutral, 1)}</div>
             <div className="text-emerald-600 dark:text-emerald-400">✓ Biased (10k/1) → ω≈{fmt(wBiased, 2)} ≪ neutral</div>
             <div className="text-emerald-600 dark:text-emerald-400">✓ Flash loan (Δt=0.001s) → ω={fmt(wFlash, 8)} ≈ 0</div>
+            {/* was: P_agg / P_true → P_curr / P_prev */}
             <div className="text-indigo-600 dark:text-indigo-400 font-bold pt-1">
-              Nash eq: P_agg=${fmt(pAggAll)} ≈ P_true=${fmt(pTrue)} ✓
+              Nash eq: P_curr=${fmt(pCurrAll)} ≈ P_prev=${fmt(pPrev)} ✓
             </div>
           </div>
         </div>
@@ -228,7 +249,7 @@ export function KarmaPortal({ bullTokenAddress, bearTokenAddress, priceFeedValue
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-                {/* Step 2 */}
+                {/* Step 2 — Submit */}
                 <div className="bg-white dark:bg-zinc-950 rounded-3xl border border-gray-100 dark:border-zinc-800 shadow-xl p-5">
                   <div className="flex items-center gap-2 mb-4">
                     <SectionBadge color="indigo">Step 2</SectionBadge>
@@ -245,14 +266,21 @@ export function KarmaPortal({ bullTokenAddress, bearTokenAddress, priceFeedValue
                         <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Price (USD)</label>
                         <input type="number" placeholder="e.g. 100.00" value={priceInput}
                           onChange={e => setPriceInput(e.target.value)}
-                          onKeyDown={e => { if (e.key === "Enter") { submitPrice(parseFloat(priceInput)); setPriceInput(""); }}}
+                          onKeyDown={e => { if (e.key === "Enter") { submitPrice(parseFloat(priceInput)); setPriceInput(""); } }}
                           className="w-full bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl px-3 py-2.5 text-sm font-mono text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white transition" />
                       </div>
                       <div>
-                        <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-900 mb-1">P_true (ground truth)</label>
-                        <input type="number" placeholder="100" value={pTrueInput}
-                          onChange={e => handlePTrueChange(e.target.value)}
+                        {/* was: P_true (ground truth) → P_prev (previous epoch price) */}
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
+                          P_prev (Previous Epoch Price)
+                        </label>
+                        <input type="number" placeholder={String(KARMA_CONSTANTS.BOOTSTRAP_PRICE)} value={pPrevInput}
+                          onChange={e => handlePPrevChange(e.target.value)}
                           className="w-full bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl px-3 py-2.5 text-sm font-mono text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white transition" />
+                        {/* Post-deploy note */}
+                        <p className="text-[9px] text-gray-400 dark:text-zinc-600 mt-1 font-mono">
+                          Post-deploy: auto-read from KarmaOracle.getPreviousEpochPrice()
+                        </p>
                       </div>
                       <button disabled={!priceInput || parseFloat(priceInput) <= 0 || isSubmitting}
                         onClick={() => { submitPrice(parseFloat(priceInput)); setPriceInput(""); }}
@@ -263,13 +291,14 @@ export function KarmaPortal({ bullTokenAddress, bearTokenAddress, priceFeedValue
                         </div>
                       </button>
                       <p className="text-[10px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-500/20 rounded-xl px-3 py-2">
-                        ⚠ Mock mode — swap with <code className="font-mono">karmaContract.write.submitPrice()</code> on deploy
+                        ⚠ Demo mode — submissions stored locally. Swap with{" "}
+                        <code className="font-mono">karmaContract.write.submitPrice()</code> on deploy.
                       </p>
                     </div>
                   )}
                 </div>
 
-                {/* Step 4 */}
+                {/* Step 4 — Bot */}
                 <div className="bg-white dark:bg-zinc-950 rounded-3xl border border-gray-100 dark:border-zinc-800 shadow-xl p-5">
                   <div className="flex items-center gap-2 mb-4">
                     <SectionBadge color="purple">Step 4</SectionBadge>
@@ -296,20 +325,24 @@ export function KarmaPortal({ bullTokenAddress, bearTokenAddress, priceFeedValue
                       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
                         className="flex items-center gap-2 px-3 py-2 bg-purple-50 dark:bg-purple-950/20 border border-purple-100 dark:border-purple-500/20 rounded-xl">
                         <Radio size={12} className="text-purple-500 animate-pulse" />
-                        <span className="text-xs font-mono text-purple-600 dark:text-purple-400">Next fetch: {botCountdown}s</span>
+                        <span className="text-xs font-mono text-purple-600 dark:text-purple-400">Next submission: {botCountdown}s</span>
                       </motion.div>
                     )}
                     <div className="bg-gray-50 dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-2xl p-3 text-xs font-mono space-y-1 text-gray-500 dark:text-zinc-400">
-                      <div>Mock price: 2800 ± 60 USD (CoinGecko sim)</div>
+                      <div>Mock price: 2800 ± 60 USD (simulated)</div>
                       <div>Bot: 310 Bull / 295 Bear (neutral)</div>
-                      <div>ω_bot ≈ {fmt(calcKarmaWeight({ bullBalance: 310, bearBalance: 295, lastSubmissionTime: Date.now()/1000 }), 1)}</div>
+                      <div>ω_bot ≈ {fmt(calcKarmaWeight({ bullBalance: 310, bearBalance: 295, lastSubmissionTime: Date.now() / 1000 }), 1)}</div>
                       <div className="text-emerald-600 dark:text-emerald-400">✓ Orb-style automated interval poster</div>
+                      {/* clarified: simulation only, real poster script is off-chain */}
+                      <div className="text-gray-400 dark:text-zinc-600 text-[10px] pt-1">
+                        UI simulation only — real poster script runs off-chain (Node.js)
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Step 3 — table */}
+              {/* Step 3 — Aggregator table */}
               <div className="bg-white dark:bg-zinc-950 rounded-3xl border border-gray-100 dark:border-zinc-800 shadow-xl overflow-hidden">
                 <div className="px-5 pt-5 pb-3 border-b border-gray-100 dark:border-zinc-800 flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -324,7 +357,7 @@ export function KarmaPortal({ bullTokenAddress, bearTokenAddress, priceFeedValue
                     </TooltipTrigger>
                     <TooltipContent side="left" className="bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-800 shadow-xl rounded-xl p-3 max-w-xs">
                       <p className="text-xs text-gray-700 dark:text-zinc-300 leading-relaxed">
-                        P_agg = Σ(ωᵢ·pᵢ)/Σωᵢ where ωᵢ=√(Bᵢ·bᵢ)·e^(−λΔt). Biased wallets get ω≈0.
+                        P_curr = Σ(ωᵢ·pᵢ)/Σωᵢ where ωᵢ=√(Bᵢ·bᵢ)·e^(−λΔt). Biased wallets get ω≈0.
                       </p>
                     </TooltipContent>
                   </Tooltip>
@@ -343,10 +376,18 @@ export function KarmaPortal({ bullTokenAddress, bearTokenAddress, priceFeedValue
                         const barPct = (s.weight / maxW) * 100;
                         const bias = getBiasLabel(s.bullBalance, s.bearBalance);
                         const sourceLabel = s.source === "bot" ? "🤖 Bot" : s.source === "user" ? "👤 You" : bias.label;
-                        const util = calcUtility({ price: s.price, pTrue, bullBalance: s.bullBalance, bearBalance: s.bearBalance, weight: s.weight, totalWeight: totalW });
+                        // was: pTrue → pPrev
+                        const util = calcUtility({
+                          price: s.price,
+                          pPrev,
+                          bullBalance: s.bullBalance,
+                          bearBalance: s.bearBalance,
+                          weight: s.weight,
+                          totalWeight: totalW,
+                        });
                         return (
                           <tr key={s.id + s.lastSubmissionTime} className="hover:bg-gray-50 dark:hover:bg-zinc-900/50 transition-colors">
-                            <td className="px-4 py-2.5 text-gray-400 dark:text-zinc-500">{s.id.length > 12 ? s.id.slice(0,12)+"…" : s.id}</td>
+                            <td className="px-4 py-2.5 text-gray-400 dark:text-zinc-500">{s.id.length > 12 ? s.id.slice(0, 12) + "…" : s.id}</td>
                             <td className="px-4 py-2.5">
                               <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase border ${bias.bg} ${bias.color}`}>{sourceLabel}</span>
                             </td>
@@ -380,7 +421,7 @@ export function KarmaPortal({ bullTokenAddress, bearTokenAddress, priceFeedValue
                     <Zap size={12} className="text-amber-500 mt-0.5 flex-shrink-0" fill="currentColor" />
                     <p className="text-[11px] text-gray-500 dark:text-zinc-400 leading-relaxed">
                       <span className="font-bold text-gray-700 dark:text-zinc-200">Game Theory verified:</span>
-                      {" "}UserB (10k/1) ω≈{fmt(wBiased,2)} vs UserA (500/500) ω≈{fmt(wNeutral,1)}.
+                      {" "}UserB (10k/1) ω≈{fmt(wBiased, 2)} vs UserA (500/500) ω≈{fmt(wNeutral, 1)}.
                       {" "}Karma Price stays ~$100 despite $500 submission.{" "}
                       <span className="text-emerald-600 dark:text-emerald-400 font-bold">Nash eq. holds ✓</span>
                     </p>
@@ -395,19 +436,36 @@ export function KarmaPortal({ bullTokenAddress, bearTokenAddress, priceFeedValue
             <motion.div key="security" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}
               className="space-y-3">
               {([
-                { title:"Sybil Resistance",      color:"emerald", formula:"Σ√(Bⱼbⱼ) ≤ √(ΣBⱼ)(Σbⱼ)",
-                  body:"Cauchy-Schwarz: splitting into k wallets never increases weight. Sybil attacks are irrational.",
-                  live:`Σ√(Bⱼbⱼ)=${fmt(sybil.lhs,2)}  ≤  √(ΣBⱼ)(Σbⱼ)=${fmt(sybil.rhs,2)}`,
-                  status: sybil.holds ? "✓ Cauchy-Schwarz holds" : "✗ VIOLATED", ok: sybil.holds },
-                { title:"Manipulation Resistance", color:"indigo", formula:"∂W_future/∂Pagg=0 at Ptrue,  ∂²W/∂Pagg²<0",
-                  body:"Future weight maximised at truthful reporting. Any bias reduces W_i(t+1), lowering Uᵢ.",
-                  live:"Nash strategy: pᵢ=ptrue+εᵢ,  E[εᵢ]=0", status:"✓ Max at truthful reporting", ok:true },
-                { title:"Flash Loan Resistance",   color:"amber",  formula:"lim_{Δt→0} W_total = 0",
-                  body:"Decay e^(−λΔt)→0 as Δt→0. Flash-borrowed tokens in same block carry zero weight.",
-                  live:`W(500/500, Δt=0.001s)=${fmt(wFlash,8)}`, status:"✓ Flash loan weight ≈ 0", ok:true },
-                { title:"Collusion Resistance",    color:"purple", formula:"Σ_{i∈C}(Bᵢ−bᵢ)≈0 ⟹ Σπᵢ^trade≈0",
-                  body:"Colluders need balanced positions for weight. Balanced = zero trading profit. Cannot do both.",
-                  live:"Dilemma: profit OR oracle influence — not both", status:"✓ Collusion is self-defeating", ok:true },
+                {
+                  title: "Sybil Resistance", color: "emerald",
+                  formula: "Σ√(Bⱼbⱼ) ≤ √(ΣBⱼ)(Σbⱼ)",
+                  body: "Cauchy-Schwarz: splitting into k wallets never increases weight. Sybil attacks are irrational.",
+                  live: `Σ√(Bⱼbⱼ)=${fmt(sybil.lhs, 2)}  ≤  √(ΣBⱼ)(Σbⱼ)=${fmt(sybil.rhs, 2)}`,
+                  status: sybil.holds ? "✓ Cauchy-Schwarz holds" : "✗ VIOLATED", ok: sybil.holds,
+                },
+                {
+                  title: "Manipulation Resistance", color: "indigo",
+                  // was: at Ptrue → at P_prev
+                  formula: "∂W_future/∂P_curr=0 at P_prev,  ∂²W/∂P_curr²<0",
+                  body: "Future weight maximised when P_curr = P_prev (previous epoch consensus). Any deviation reduces W_i(t+1).",
+                  // was: pᵢ=ptrue → pᵢ≈P_prev
+                  live: "Nash strategy: pᵢ ≈ P_prev,  E[deviation]=0",
+                  status: "✓ Max at previous epoch consensus", ok: true,
+                },
+                {
+                  title: "Flash Loan Resistance", color: "amber",
+                  formula: "lim_{Δt→0} W_total = 0",
+                  body: "Decay e^(−λΔt)→0 as Δt→0. Flash-borrowed tokens in same block carry zero weight.",
+                  live: `W(500/500, Δt=0.001s)=${fmt(wFlash, 8)}`,
+                  status: "✓ Flash loan weight ≈ 0", ok: true,
+                },
+                {
+                  title: "Collusion Resistance", color: "purple",
+                  formula: "Σ_{i∈C}(Bᵢ−bᵢ)≈0 ⟹ Σπᵢ^trade≈0",
+                  body: "Colluders need balanced positions for weight. Balanced = zero trading profit. Cannot do both.",
+                  live: "Dilemma: profit OR oracle influence — not both",
+                  status: "✓ Collusion is self-defeating", ok: true,
+                },
               ] as const).map(item => (
                 <div key={item.title} className="bg-white dark:bg-zinc-950 rounded-3xl border border-gray-100 dark:border-zinc-800 shadow-xl p-5">
                   <div className="flex items-start justify-between gap-2 mb-2">
@@ -444,12 +502,13 @@ export function KarmaPortal({ bullTokenAddress, bearTokenAddress, priceFeedValue
               <div className="bg-white dark:bg-zinc-950 rounded-3xl border border-gray-100 dark:border-zinc-800 shadow-xl overflow-hidden">
                 <div className="px-5 pt-5 pb-3 border-b border-gray-100 dark:border-zinc-800">
                   <SectionBadge color="indigo">Balance Evolution — Proof pg. 2</SectionBadge>
+                  {/* was: P_agg/P_true → P_curr/P_prev */}
                   <div className="text-[11px] font-mono text-gray-400 dark:text-zinc-500 space-y-0.5 mt-2">
-                    <div>Bᵢ(t+1) = Bᵢ · P_agg / P_true</div>
-                    <div>bᵢ(t+1) = bᵢ · (2·P_true − P_agg) / P_true</div>
-                    <div>Wᵢ(t+1) = Bᵢbᵢ · P_agg·(2P_true−P_agg) / P_true²</div>
+                    <div>Bᵢ(t+1) = Bᵢ · P_curr / P_prev</div>
+                    <div>bᵢ(t+1) = bᵢ · (2·P_prev − P_curr) / P_prev</div>
+                    <div>Wᵢ(t+1) = Bᵢbᵢ · P_curr·(2·P_prev−P_curr) / P_prev²</div>
                     <div className="text-indigo-500 dark:text-indigo-400 pt-1">
-                      P_agg=${fmt(pAggAll)} · P_true=${fmt(pTrue)} · ratio={fmt(pAggAll/pTrue, 3)}
+                      P_curr=${fmt(pCurrAll)} · P_prev=${fmt(pPrev)} · ratio={fmt(pCurrAll / pPrev, 3)}
                     </div>
                   </div>
                 </div>
@@ -464,21 +523,32 @@ export function KarmaPortal({ bullTokenAddress, bearTokenAddress, priceFeedValue
                     </thead>
                     <tbody className="divide-y divide-gray-50 dark:divide-zinc-900">
                       {allSubs.map(s => {
-                        const { newBull, newBear } = evolveBalances({ bullBalance: s.bullBalance, bearBalance: s.bearBalance, pAgg: pAggAll, pTrue });
-                        const nW = nextPeriodWeight({ bullBalance: s.bullBalance, bearBalance: s.bearBalance, pAgg: pAggAll, pTrue });
+                        // was: pAgg/pTrue → pCurr/pPrev
+                        const { newBull, newBear } = evolveBalances({
+                          bullBalance: s.bullBalance,
+                          bearBalance: s.bearBalance,
+                          pCurr: pCurrAll,
+                          pPrev,
+                        });
+                        const nW = nextPeriodWeight({
+                          bullBalance: s.bullBalance,
+                          bearBalance: s.bearBalance,
+                          pCurr: pCurrAll,
+                          pPrev,
+                        });
                         const delta = newBull - s.bullBalance;
                         return (
                           <tr key={s.id} className="hover:bg-gray-50 dark:hover:bg-zinc-900/50 transition-colors">
-                            <td className="px-4 py-2.5 text-gray-400 dark:text-zinc-500">{s.id.slice(0,10)}</td>
-                            <td className="px-4 py-2.5 text-emerald-600 dark:text-emerald-400">{fmt(s.bullBalance,1)}</td>
-                            <td className="px-4 py-2.5 text-rose-600 dark:text-rose-400">{fmt(s.bearBalance,1)}</td>
-                            <td className="px-4 py-2.5 text-emerald-600 dark:text-emerald-400">{fmt(newBull,2)}</td>
-                            <td className="px-4 py-2.5 text-rose-600 dark:text-rose-400">{fmt(newBear,2)}</td>
+                            <td className="px-4 py-2.5 text-gray-400 dark:text-zinc-500">{s.id.slice(0, 10)}</td>
+                            <td className="px-4 py-2.5 text-emerald-600 dark:text-emerald-400">{fmt(s.bullBalance, 1)}</td>
+                            <td className="px-4 py-2.5 text-rose-600 dark:text-rose-400">{fmt(s.bearBalance, 1)}</td>
+                            <td className="px-4 py-2.5 text-emerald-600 dark:text-emerald-400">{fmt(newBull, 2)}</td>
+                            <td className="px-4 py-2.5 text-rose-600 dark:text-rose-400">{fmt(newBear, 2)}</td>
                             <td className="px-4 py-2.5 text-indigo-600 dark:text-indigo-400">
-                              {nW < 0 ? <span className="text-gray-300 dark:text-zinc-600">≈0</span> : fmt(nW,1)}
+                              {nW < 0 ? <span className="text-gray-300 dark:text-zinc-600">≈0</span> : fmt(nW, 1)}
                             </td>
                             <td className={`px-4 py-2.5 ${delta >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
-                              {delta >= 0 ? "+" : ""}{fmt(delta,2)}
+                              {delta >= 0 ? "+" : ""}{fmt(delta, 2)}
                             </td>
                           </tr>
                         );
@@ -491,7 +561,7 @@ export function KarmaPortal({ bullTokenAddress, bearTokenAddress, priceFeedValue
                     <Zap size={12} className="text-amber-500 mt-0.5 flex-shrink-0" fill="currentColor" />
                     <p className="text-[11px] text-gray-500 dark:text-zinc-400 leading-relaxed">
                       <span className="font-bold text-gray-700 dark:text-zinc-200">One-shot deviation (pg. 3):</span>
-                      {" "}Neutral reporters stable when P_agg≈P_true. Biased reporters see W(t+1) collapse.{" "}
+                      {" "}Neutral reporters stable when P_curr≈P_prev. Biased reporters see W(t+1) collapse.{" "}
                       <span className="text-emerald-600 dark:text-emerald-400 font-bold">Subgame perfect equilibrium ✓</span>
                     </p>
                   </div>
