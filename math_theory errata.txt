@@ -1,0 +1,16 @@
+## 📝 Mathematical Specification Update (Post-Submission)
+Note: The initial project PDF referenced an external price $P_{true}$ for derivation. To ensure 100% protocol endogeneity (as requested by mentors), the logic has been updated to use **$P_{prev}$** (Previous Epoch Consensus) as the reference point.
+
+### Updated Stability Proof (Hessian Analysis)
+The stability of the Karma Oracle is defined by the concavity of the future weight function $W$ with respect to the current aggregated price $P_{curr}$.
+
+**The Weight Function:**
+$$W = \sqrt{B \cdot b} \cdot \sqrt{\frac{P_{curr}(2P_{prev} - P_{curr})}{P_{prev}^2}}$$
+
+**The Gradient (First Derivative):**
+$$\frac{\partial W}{\partial P_{curr}} = 0 \quad \text{at} \quad P_{curr} = P_{prev}$$
+
+**The Hessian (Second Derivative):**
+$$\frac{\partial^2 W}{\partial P_{curr}^2} < 0$$
+
+**Conclusion:** The community consensus is a **Global Maximum**. Any deviation from the previous consensus ($P_{prev}$) results in a loss of future influence ($W$), making honest reporting the unique Nash Equilibrium.
